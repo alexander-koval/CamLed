@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
         errExit("signal");
     }
 
-    for (;;) {
+    while (true) {
         if (read(server_fd, &req, sizeof(struct request)) != sizeof(struct request)) {
             fprintf(stderr, "Error reading request; discarding\n");
             continue;
@@ -44,6 +44,6 @@ int main(int argc, char *argv[]) {
         if (close(client_fd) == -1) {
             errMsg("close");
         }
-        seqNum += req.seqLen;
+        seqNum += 1;
     }
 }

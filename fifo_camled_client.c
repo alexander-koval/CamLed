@@ -1,4 +1,7 @@
 #include "fifo_camled.h"
+#include <stdio.h>
+#include <ctype.h>
+#include <limits.h>
 
 static char client_fifo[CLIENT_FIFO_NAME_LEN];
 
@@ -24,26 +27,52 @@ int main(int argc, char* argv[]) {
         errExit("atexit");
     }
 
-    req.pid = getpid();
-    req.seqLen = (argc > 1) ? getInt(argv[1], GN_GT_0, "seq-len") : 1;
-
-    server_fd = open(SERVER_FIFO, O_WRONLY);
+    server_fd = open(SERVER_FIFO, O_WRONLY | O_NONBLOCK);
     if (server_fd == -1) {
         errExit("open %s", SERVER_FIFO);
     }
 
-    if (write(server_fd, &req, sizeof(struct request)) != sizeof(struct request)) {
-        fatal("Can't write to server");
+    int len, index;
+    Boolean bad_pattern;
+    for (;;) {
+        printf("R: ");
+        fflush(stdout);
+        if (fgets(req.data, MAX_CMD_SIZE, stdin) == NULL) {
+            break;
+        }
+        len = strlen(req.data);
+        if (len <= 1) {
+            break;
+        }
+        if (req.data[len - 1] == '\n') {
+            req.data[len - 1] = '\0';
+        }
+
+        for (index = 0, bad_pattern = FALSE; index < len && !bad_pattern; index++)
+            if (!isalnum((unsigned char) req.data[index]) &&
+                strchr("_*?[^-]. ", req.data[index]) == NULL)
+                bad_pattern = TRUE;
+        if (bad_pattern) {
+            errExit("Bad pattern character: %c\n", req.data[index - 1]);
+        }
+
+        req.pid = getpid();
+        req.dataLen = len;
+        if (write(server_fd, &req, sizeof(struct request)) != sizeof(struct request)) {
+            fatal("Can't write to server");
+        }
+
+        client_fd = open(client_fifo, O_RDONLY);
+        if (client_fd == -1) {
+            errExit("open %s", client_fifo);
+        }
+
+        if (read(client_fd, &resp, sizeof(struct response)) != sizeof(struct response)) {
+            fatal("Can't read response from server");
+        }
+//        free(req.data);
+        printf("A: %d\n", resp.seqNum);
     }
 
-    client_fd = open(client_fifo, O_RDONLY);
-    if (client_fd == -1) {
-        errExit("open %s", client_fifo);
-    }
-
-    if (read(client_fd, &resp, sizeof(struct response)) != sizeof(struct response)) {
-        fatal("Can't read response from server");
-    }
-    printf("%d\n", resp.seqNum);
     exit(EXIT_SUCCESS);
 }
